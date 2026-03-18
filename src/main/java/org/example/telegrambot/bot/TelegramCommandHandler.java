@@ -227,6 +227,7 @@ public class TelegramCommandHandler {
                "🧠 /questions — Quiz de 20 preguntas\n" +
                "📅 /daily — Reto diario\n" +
                "📊 /profile — Tu progreso\n" +
+               "📈 /stats — Estadísticas del bot\n" +
                "❓ /help — Ayuda completa";
     }
 

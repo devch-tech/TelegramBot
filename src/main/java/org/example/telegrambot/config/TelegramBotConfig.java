@@ -40,6 +40,7 @@ public class TelegramBotConfig {
                     new BotCommand("questions", "Quiz de 20 preguntas"),
                     new BotCommand("daily",     "Reto diario 🔥"),
                     new BotCommand("profile",   "Tu progreso y estadísticas"),
+                    new BotCommand("stats",     "Estadísticas globales del bot"),
                     new BotCommand("help",      "Ayuda")
             );
 

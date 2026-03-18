@@ -38,6 +38,10 @@ public class StartCommand implements BotCommand {
     public String execute(Update update, TelegramClient client) {
         Long   chatId    = update.getMessage().getChatId();
         String firstName = update.getMessage().getFrom().getFirstName();
+        String username  = update.getMessage().getFrom().getUserName();
+
+        // Persist user so they appear in /stats
+        sessionService.registerOrUpdate(chatId, firstName, username);
 
         String text = "👋 ¡Hola, *" + firstName + "*! Bienvenido a *DevBot* 🤖\n\n" +
                 "Soy tu asistente personal para crecer como desarrollador:\n\n" +
