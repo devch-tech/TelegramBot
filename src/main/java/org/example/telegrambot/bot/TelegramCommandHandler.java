@@ -61,28 +61,14 @@ public class TelegramCommandHandler {
                     return;
                 }
 
-                // Step 1 → Step 2: user chose human language
-                // ISSUE_HLANG:java:es
-                if (data.startsWith("ISSUE_HLANG:")) {
-                    String[] parts = data.substring("ISSUE_HLANG:".length()).split(":", 2);
+                // User chose label type → ISSUE_LABEL:java:gfi
+                if (data.startsWith("ISSUE_LABEL:")) {
+                    String[] parts = data.substring("ISSUE_LABEL:".length()).split(":", 2);
                     if (parts.length == 2) {
                         String progLang  = parts[0];
-                        String humanLang = parts[1];
-                        IssueCommand.sendLabelSelector(client, chatId, progLang, humanLang);
-                    }
-                    return;
-                }
-
-                // Step 2 → Step 3: user chose label
-                // ISSUE_LABEL:java:es:gfi
-                if (data.startsWith("ISSUE_LABEL:")) {
-                    String[] parts = data.substring("ISSUE_LABEL:".length()).split(":", 3);
-                    if (parts.length == 3) {
-                        String progLang  = parts[0];
-                        String humanLang = parts[1];
-                        String labelCode = parts[2];
-                        IssueCommand.searchAndSend(client, chatId, progLang, humanLang,
-                                labelCode, gitHubIssueService, sessionService);
+                        String labelCode = parts[1];
+                        IssueCommand.searchAndSend(client, chatId, progLang, labelCode,
+                                gitHubIssueService, sessionService);
                     }
                     return;
                 }
