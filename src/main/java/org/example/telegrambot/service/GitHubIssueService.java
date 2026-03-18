@@ -8,6 +8,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -49,7 +50,7 @@ public class GitHubIssueService {
 
         lastCtxByChat.put(chatId, new SearchCtx(language, label, since));
 
-        List<Map<String, Object>> result = searchIssues(language, label, since, 10);
+        List<Map<String, Object>> result = searchIssues(language, label, since);
         lastIssuesByChat.put(chatId, result);
         return result;
     }
@@ -64,7 +65,7 @@ public class GitHubIssueService {
             // valores por defecto para no romper callbacks si no hay contexto previo
             return findAndCache(chatId, "Java", "good first issue");
         }
-        List<Map<String, Object>> result = searchIssues(ctx.language(), ctx.label(), ctx.sinceDate(), 10);
+        List<Map<String, Object>> result = searchIssues(ctx.language(), ctx.label(), ctx.sinceDate());
         lastIssuesByChat.put(chatId, result);
         return result;
     }
@@ -79,7 +80,7 @@ public class GitHubIssueService {
     /**
      * Búsqueda base en GitHub con rotación de página y evitando PRs.
      */
-    private List<Map<String, Object>> searchIssues(String language, String label, LocalDate sinceDate, int perPage) {
+    private List<Map<String, Object>> searchIssues(String language, String label, LocalDate sinceDate) {
         int maxPages = 5;
         int page = new Random().nextInt(maxPages) + 1;
 
@@ -95,7 +96,7 @@ public class GitHubIssueService {
                         .queryParam("q", query)
                         .queryParam("sort", "created")
                         .queryParam("order", "desc")
-                        .queryParam("per_page", perPage)
+                        .queryParam("per_page", 10)
                         .queryParam("page", page)
                         .build())
                 .retrieve()

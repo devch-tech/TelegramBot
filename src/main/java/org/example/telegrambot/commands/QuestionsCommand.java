@@ -1,14 +1,38 @@
 package org.example.telegrambot.commands;
 
+import lombok.RequiredArgsConstructor;
+import org.example.telegrambot.service.TriviaService;
+import org.example.telegrambot.service.UserSessionService;
+import org.example.telegrambot.ui.QuizUI;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
-@Component("/questions")
+@Component("questions")
+@RequiredArgsConstructor
 public class QuestionsCommand implements BotCommand {
+
+    private final TriviaService      triviaService;
+    private final UserSessionService sessionService;
 
     @Override
     public String execute(Update update, TelegramClient client) {
+        Long chatId = update.getMessage().getChatId();
+
+        TriviaService.QuizState state = triviaService.startQuiz(chatId);
+
+        if (state.questions().isEmpty()) {
+            return "❌ No se pudieron cargar las preguntas. Intenta de nuevo en unos segundos.";
+        }
+
+        sessionService.recordActivity(chatId);
+
+        try {
+            QuizUI.sendQuestion(client, chatId, state, triviaService);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "⚠️ Error iniciando el quiz";
+        }
         return "";
     }
 }

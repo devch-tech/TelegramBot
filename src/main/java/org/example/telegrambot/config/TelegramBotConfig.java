@@ -34,10 +34,14 @@ public class TelegramBotConfig {
 
             // 1) Definir comandos que verás en el botón "Menu"
             List<BotCommand> commands = List.of(
-                    new BotCommand("/help",      "Ayuda"),
-                    new BotCommand("/issue",     "Issues (usa: /issue <lenguaje> <label>)"),
-                    new BotCommand("/exercise",  "Ejercicios por lenguaje"),
-                    new BotCommand("/questions", "Preguntas para estudiar")
+                    new BotCommand("start",     "Configurar lenguaje favorito"),
+                    new BotCommand("issue",     "Issues de GitHub por dificultad"),
+                    new BotCommand("exercises", "Ejercicios reales de Exercism"),
+                    new BotCommand("questions", "Quiz de 20 preguntas"),
+                    new BotCommand("daily",     "Reto diario 🔥"),
+                    new BotCommand("profile",   "Tu progreso y estadísticas"),
+                    new BotCommand("resources", "Recursos curados por lenguaje"),
+                    new BotCommand("help",      "Ayuda")
             );
 
             try {
