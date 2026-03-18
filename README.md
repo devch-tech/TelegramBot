@@ -49,25 +49,35 @@ java -jar target/TelegramBot-0.0.1-SNAPSHOT.jar
 ## Comandos disponibles
 
 ### `/start`
-Onboarding inicial. El bot te muestra un selector de lenguaje (12 lenguajes con botones inline). Al elegir uno, queda guardado y todos los demás comandos lo usarán automáticamente.
+Onboarding inicial. El bot te muestra un selector de 12 lenguajes con botones inline.
+
+**Flujo de 2 lenguajes favoritos:**
+1. Eliges tu **lenguaje principal** (ej: Java)
+2. El bot pregunta si quieres añadir un **segundo lenguaje** favorito
+3. Puedes elegir un segundo o pulsar **⏭ Solo con un lenguaje** para continuar
+
+Todos los demás comandos usarán tu lenguaje principal automáticamente.
 
 ---
 
-### `/issue [lenguaje] [nivel]`
-Busca issues abiertas en GitHub por lenguaje y nivel de dificultad.
+### `/issue`
+Busca issues abiertas en GitHub mediante un selector interactivo en **2 pasos**:
 
-| Uso | Comportamiento |
-|-----|---------------|
-| `/issue` | Usa tu lenguaje guardado y muestra selector de nivel |
-| `/issue java` | Muestra selector de nivel para Java |
-| `/issue java principiante` | Busca issues de nivel principiante en Java |
-| `/issue python intermedio` | Busca issues de nivel intermedio en Python |
-| `/issue go avanzado` | Busca issues de nivel avanzado en Go |
+**Paso 1 — Idioma de las issues:**
 
-**Niveles disponibles:**
-- `principiante` → label `good first issue`
-- `intermedio` → label `help wanted`
-- `avanzado` → label `bug`
+| Botón | Descripción |
+|-------|-------------|
+| 🇪🇸 Español | Busca en repositorios etiquetados en español |
+| 🇬🇧 English | Búsqueda estándar en inglés (por defecto) |
+
+**Paso 2 — Tipo de issue:**
+
+| Botón | Label de GitHub |
+|-------|----------------|
+| 🟢 Good First Issue | `good first issue` — ideal para contribuir por primera vez |
+| 🤝 Help Wanted | `help wanted` — el proyecto pide ayuda activamente |
+| 🐛 Bug | `bug` — errores confirmados que necesitan solución |
+| 📋 Todas | Sin filtro de etiqueta |
 
 Los resultados aparecen con paginación: ◀️ anterior · 🔄 refrescar · ▶️ siguiente
 
@@ -101,7 +111,7 @@ Inicia un quiz de **20 preguntas de programación** obtenidas de [Open Trivia DB
 
 ### `/daily`
 Tu **reto diario** combinado. Cada día te envía:
-1. 🔍 Una selección de issues para explorar
+1. 🔍 Issues del día para explorar (siempre incluidas, con mensaje si no hay)
 2. 💪 Un ejercicio de Exercism
 3. 🧠 Una pregunta de programación
 
@@ -112,29 +122,11 @@ Al completarlo se actualiza tu racha 🔥. Solo puede hacerse una vez por día.
 ### `/profile`
 Muestra tu panel de progreso personal:
 - 🔥 Racha de días consecutivos activos
-- 💻 Lenguaje favorito configurado
+- 💻 Lenguajes favoritos configurados (hasta 2)
 - 💪 Ejercicios explorados
 - 🔍 Issues revisadas
 - 🧠 Quizzes completados
 - ⭐ Puntos totales acumulados en quizzes
-
----
-
-### `/resources [lenguaje]`
-Lista de recursos curados para el lenguaje elegido:
-- Documentación oficial
-- Tutorial de inicio
-- Track de Exercism
-- Awesome List del lenguaje
-- Subreddit de aprendizaje
-
-| Uso | Comportamiento |
-|-----|---------------|
-| `/resources` | Usa tu lenguaje guardado |
-| `/resources java` | Recursos de Java |
-| `/resources python` | Recursos de Python |
-
-**Lenguajes soportados:** java · python · javascript · typescript · go · rust · kotlin · ruby · csharp · cpp · swift · php
 
 ---
 
@@ -171,19 +163,18 @@ src/main/java/org/example/telegrambot/
 │   └── TelegramCommandHandler.java   # Dispatcher: enruta comandos y callbacks inline
 ├── commands/
 │   ├── BotCommand.java               # Interfaz base
-│   ├── StartCommand.java             # /start — onboarding con selector de lenguaje
-│   ├── IssueCommand.java             # /issue — issues de GitHub por dificultad
+│   ├── StartCommand.java             # /start — onboarding con hasta 2 lenguajes favoritos
+│   ├── IssueCommand.java             # /issue — selector idioma (🇪🇸/🇬🇧) + etiqueta
 │   ├── ExercisesCommand.java         # /exercises — ejercicios de Exercism
 │   ├── QuestionsCommand.java         # /questions — quiz de 20 preguntas
 │   ├── DailyCommand.java             # /daily — reto diario
 │   ├── ProfileCommand.java           # /profile — estadísticas del usuario
-│   ├── ResourcesCommand.java         # /resources — recursos curados
 │   └── HelpCommand.java              # /help
 ├── service/
-│   ├── GitHubIssueService.java       # GitHub Search API + caché por chat
+│   ├── GitHubIssueService.java       # GitHub Search API + filtro idioma + caché por chat
 │   ├── ExercismService.java          # Exercism API + caché por chat
 │   ├── TriviaService.java            # Open Trivia DB API + estado del quiz por chat
-│   └── UserSessionService.java       # Preferencias, estadísticas y racha por usuario
+│   └── UserSessionService.java       # Hasta 2 lenguajes favoritos, stats y racha
 ├── ui/
 │   ├── IssuesUI.java                 # Mensajes de issues con teclado inline paginado
 │   ├── ExerciseUI.java               # Mensajes de ejercicios con teclado inline paginado
@@ -196,11 +187,26 @@ src/main/java/org/example/telegrambot/
     └── Constants.java                # Mensajes y constantes
 ```
 
+### Flujo de callbacks inline
+
+| Callback | Descripción |
+|----------|-------------|
+| `LANG:java` | Guarda lenguaje principal, pide segundo |
+| `LANG2:python` | Guarda segundo lenguaje |
+| `LANG_SKIP` | Confirma solo con el lenguaje principal |
+| `ISSUE_HLANG:java:es` | Paso 1 de /issue — idioma elegido |
+| `ISSUE_LABEL:java:es:gfi` | Paso 2 de /issue — etiqueta elegida, lanza búsqueda |
+| `ISSUES_PAGE:2` | Paginación de issues |
+| `ISSUES_REFRESH` | Refresca resultados de issues |
+| `EX_PAGE:java:2` | Paginación de ejercicios |
+| `EX_REFRESH:java` | Refresca ejercicios |
+| `QA:0` / `QA:1` / `QA:2` / `QA:3` | Respuesta del quiz |
+
 ### APIs externas utilizadas
 
 | API | Uso | Límite gratuito |
 |-----|-----|-----------------|
-| GitHub Search API | Buscar issues por lenguaje y label | 5000 req/hora (con token) |
+| GitHub Search API | Buscar issues por lenguaje, etiqueta e idioma | 5000 req/hora (con token) |
 | Exercism API v2 | Obtener ejercicios por track y dificultad | Sin límite conocido |
 | Open Trivia DB | Preguntas de programación (categoría 18) | Sin límite conocido |
 
