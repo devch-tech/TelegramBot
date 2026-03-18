@@ -23,67 +23,60 @@ public class IssueCommand implements BotCommand {
     private final GitHubIssueService gitHubIssueService;
     private final UserSessionService sessionService;
 
-    /** Maps user-friendly complexity levels to GitHub labels. */
-    private static final Map<String, String> COMPLEXITY_MAP = Map.of(
-            "principiante", "good first issue",
-            "beginner",     "good first issue",
-            "intermedio",   "help wanted",
-            "intermediate", "help wanted",
-            "avanzado",     "bug",
-            "advanced",     "bug"
-    );
-
     @Override
     public String execute(Update update, TelegramClient client) {
-        Long   chatId = update.getMessage().getChatId();
-        String text   = update.getMessage().getText().trim();
-        String[] tokens = text.split("\\s+", 3);
-
-        // /issue  →  use saved language + show level selector
-        if (tokens.length < 2) {
-            return sendLevelSelector(client, chatId, sessionService.getLanguageOrDefault(chatId));
-        }
-
-        String language = tokens[1].toLowerCase();
-        sessionService.setLanguage(chatId, language);
-
-        // /issue java  →  show level selector
-        if (tokens.length < 3) {
-            return sendLevelSelector(client, chatId, language);
-        }
-
-        // /issue java principiante  (or raw GitHub label)
-        String rawLevel = tokens[2].toLowerCase();
-        String label    = COMPLEXITY_MAP.getOrDefault(rawLevel, rawLevel);
-
-        List<Map<String, Object>> issues =
-                gitHubIssueService.findAndCache(chatId, language, label);
-
-        sessionService.addIssueExplored(chatId);
-
-        try {
-            IssuesUI.sendIssuesPage(client, chatId, issues, 1);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "⚠️ Error mostrando las issues";
-        }
+        Long   chatId   = update.getMessage().getChatId();
+        String language = sessionService.getLanguageOrDefault(chatId);
+        sendHumanLanguageSelector(client, chatId, language);
         return "";
     }
 
-    /** Sends an inline keyboard so the user can pick difficulty level. */
-    public static String sendLevelSelector(TelegramClient client, Long chatId, String language) {
-        String langCap = Character.toUpperCase(language.charAt(0)) + language.substring(1);
+    // ── Step 1: choose human language ────────────────────────────────────────
 
-        String[][] levels = {
-                {"🟢 Principiante", "ISSUE_LEVEL:" + language + ":principiante"},
-                {"🟡 Intermedio",   "ISSUE_LEVEL:" + language + ":intermedio"},
-                {"🔴 Avanzado",     "ISSUE_LEVEL:" + language + ":avanzado"}
+    public static void sendHumanLanguageSelector(TelegramClient client, Long chatId, String progLang) {
+        String langCap = capitalize(progLang);
+
+        InlineKeyboardButton esBtn = new InlineKeyboardButton("🇪🇸 Español");
+        esBtn.setCallbackData("ISSUE_HLANG:" + progLang + ":es");
+
+        InlineKeyboardButton enBtn = new InlineKeyboardButton("🇬🇧 English");
+        enBtn.setCallbackData("ISSUE_HLANG:" + progLang + ":en");
+
+        InlineKeyboardRow row = new InlineKeyboardRow();
+        row.add(esBtn);
+        row.add(enBtn);
+
+        InlineKeyboardMarkup kb = new InlineKeyboardMarkup(List.of(row));
+        kb.setKeyboard(List.of(row));
+
+        SendMessage msg = new SendMessage(String.valueOf(chatId),
+                "🔍 *Issues de " + langCap + "*\n¿En qué idioma quieres las issues?");
+        msg.setParseMode("Markdown");
+        msg.setReplyMarkup(kb);
+
+        try { client.execute(msg); } catch (Exception e) { e.printStackTrace(); }
+    }
+
+    // ── Step 2: choose label ─────────────────────────────────────────────────
+
+    public static void sendLabelSelector(TelegramClient client, Long chatId,
+                                          String progLang, String humanLang) {
+        String langCap    = capitalize(progLang);
+        String humanLabel = "es".equals(humanLang) ? "🇪🇸 Español" : "🇬🇧 English";
+
+        String prefix = "ISSUE_LABEL:" + progLang + ":" + humanLang + ":";
+
+        String[][] labels = {
+                {"🟢 Good First Issue", prefix + "gfi"},
+                {"🤝 Help Wanted",      prefix + "hw"},
+                {"🐛 Bug",              prefix + "bug"},
+                {"📋 Todas",            prefix + "all"}
         };
 
         List<InlineKeyboardRow> rows = new ArrayList<>();
-        for (String[] level : levels) {
-            InlineKeyboardButton btn = new InlineKeyboardButton(level[0]);
-            btn.setCallbackData(level[1]);
+        for (String[] label : labels) {
+            InlineKeyboardButton btn = new InlineKeyboardButton(label[0]);
+            btn.setCallbackData(label[1]);
             InlineKeyboardRow row = new InlineKeyboardRow();
             row.add(btn);
             rows.add(row);
@@ -93,11 +86,31 @@ public class IssueCommand implements BotCommand {
         kb.setKeyboard(rows);
 
         SendMessage msg = new SendMessage(String.valueOf(chatId),
-                "🔍 *Issues de " + langCap + "* — Elige nivel de dificultad:");
+                "🔍 *Issues de " + langCap + "* (" + humanLabel + ")\n¿Qué tipo de issues buscas?");
         msg.setParseMode("Markdown");
         msg.setReplyMarkup(kb);
 
         try { client.execute(msg); } catch (Exception e) { e.printStackTrace(); }
-        return "";
+    }
+
+    // ── Step 3: search & display ─────────────────────────────────────────────
+
+    public static void searchAndSend(TelegramClient client, Long chatId,
+                                      String progLang, String humanLang, String labelCode,
+                                      GitHubIssueService gitHubIssueService,
+                                      UserSessionService sessionService) {
+        List<Map<String, Object>> issues =
+                gitHubIssueService.findAndCache(chatId, progLang, labelCode, humanLang);
+        sessionService.addIssueExplored(chatId);
+        try {
+            IssuesUI.sendIssuesPage(client, chatId, issues, 1);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 }

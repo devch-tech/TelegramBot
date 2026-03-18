@@ -2,13 +2,13 @@ package org.example.telegrambot.commands;
 
 import lombok.RequiredArgsConstructor;
 import org.example.telegrambot.service.UserSessionService;
-import org.springframework.stereotype.Component;
+// import org.springframework.stereotype.Component; // Command removed
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import java.util.Map;
 
-@Component("resources")
+// @Component("resources") — command removed
 @RequiredArgsConstructor
 public class ResourcesCommand implements BotCommand {
 

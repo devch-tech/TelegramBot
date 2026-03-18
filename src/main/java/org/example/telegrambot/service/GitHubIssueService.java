@@ -8,7 +8,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
-
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,13 +21,19 @@ public class GitHubIssueService {
     private final GitHubProperties gitHubProperties;
     private WebClient webClient;
 
-    // Historial de issues ya mostradas por chatId (para no repetir en una sesión)
     private final Map<String, Set<String>> issuesMostradasPorChat = new ConcurrentHashMap<>();
 
-    // --- NUEVO: caché de última búsqueda por chat ---
-    private record SearchCtx(String language, String label, LocalDate sinceDate) {}
-    private final Map<Long, SearchCtx> lastCtxByChat = new ConcurrentHashMap<>();
+    private record SearchCtx(String language, String label, LocalDate sinceDate, String humanLanguage) {}
+    private final Map<Long, SearchCtx>                lastCtxByChat    = new ConcurrentHashMap<>();
     private final Map<Long, List<Map<String, Object>>> lastIssuesByChat = new ConcurrentHashMap<>();
+
+    /** Label code → GitHub label text */
+    public static final Map<String, String> LABEL_CODE_MAP = Map.of(
+            "gfi", "good first issue",
+            "hw",  "help wanted",
+            "bug", "bug"
+            // "all" → no label filter
+    );
 
     @PostConstruct
     public void init() {
@@ -39,120 +44,126 @@ public class GitHubIssueService {
                 .build();
     }
 
+    // ── Public API ────────────────────────────────────────────────────────────
+
     /**
-     * Primera búsqueda: fija un contexto aleatorio (fecha base) y cachea resultados.
+     * First search: picks a random date context, caches results.
+     * humanLanguage: "es" (Spanish) or "en" (English/default).
+     * labelCode: "gfi", "hw", "bug", "all" — or raw GitHub label text.
      */
-    public List<Map<String, Object>> findAndCache(Long chatId, String language, String label) {
-        // fecha aleatoria dentro de los últimos 4 meses, pero fija para este contexto
+    public List<Map<String, Object>> findAndCache(Long chatId, String language,
+                                                   String labelCode, String humanLanguage) {
         LocalDate start = LocalDate.now().minusMonths(4);
         long days = ChronoUnit.DAYS.between(start, LocalDate.now());
         LocalDate since = start.plusDays(new Random().nextInt((int) days + 1));
 
-        lastCtxByChat.put(chatId, new SearchCtx(language, label, since));
+        lastCtxByChat.put(chatId, new SearchCtx(language, labelCode, since, humanLanguage));
 
-        List<Map<String, Object>> result = searchIssues(language, label, since);
+        List<Map<String, Object>> result = searchIssues(language, labelCode, since, humanLanguage);
         lastIssuesByChat.put(chatId, result);
         return result;
     }
 
-    /**
-     * Refresca usando el mismo contexto guardado (misma fecha base, mismo lang/label).
-     * Si no hay contexto, hace uno por defecto.
-     */
+    /** Backward-compat: findAndCache without humanLanguage (defaults to "en"). */
+    public List<Map<String, Object>> findAndCache(Long chatId, String language, String labelCode) {
+        return findAndCache(chatId, language, labelCode, "en");
+    }
+
+    /** Refresh using the same cached context. */
     public List<Map<String, Object>> refresh(Long chatId) {
         SearchCtx ctx = lastCtxByChat.get(chatId);
         if (ctx == null) {
-            // valores por defecto para no romper callbacks si no hay contexto previo
-            return findAndCache(chatId, "Java", "good first issue");
+            return findAndCache(chatId, "java", "gfi", "en");
         }
-        List<Map<String, Object>> result = searchIssues(ctx.language(), ctx.label(), ctx.sinceDate());
+        List<Map<String, Object>> result =
+                searchIssues(ctx.language(), ctx.label(), ctx.sinceDate(), ctx.humanLanguage());
         lastIssuesByChat.put(chatId, result);
         return result;
     }
 
-    /**
-     * Últimos resultados cacheados (útil para paginación sin volver a llamar a GitHub).
-     */
     public List<Map<String, Object>> getLastIssues(Long chatId) {
         return lastIssuesByChat.getOrDefault(chatId, Collections.emptyList());
     }
 
-    /**
-     * Búsqueda base en GitHub con rotación de página y evitando PRs.
-     */
-    private List<Map<String, Object>> searchIssues(String language, String label, LocalDate sinceDate) {
-        int maxPages = 5;
-        int page = new Random().nextInt(maxPages) + 1;
+    // ── Internal search ───────────────────────────────────────────────────────
 
-        // Añadimos "is:issue" para excluir pull requests
-        String query = String.format(
-                "is:issue language:%s label:%s state:open created:>%s",
-                language, label, sinceDate
-        );
+    private List<Map<String, Object>> searchIssues(String language, String labelCode,
+                                                    LocalDate sinceDate, String humanLanguage) {
+        int page = new Random().nextInt(5) + 1;
 
-        List<Map<String, Object>> items = webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/search/issues")
-                        .queryParam("q", query)
-                        .queryParam("sort", "created")
-                        .queryParam("order", "desc")
-                        .queryParam("per_page", 10)
-                        .queryParam("page", page)
-                        .build())
-                .retrieve()
-                .bodyToMono(Map.class)
-                .map(response -> (List<Map<String, Object>>) response.get("items"))
-                .block();
+        // Resolve label
+        String labelText = LABEL_CODE_MAP.getOrDefault(labelCode, labelCode);
+
+        // Build query
+        StringBuilder query = new StringBuilder();
+        query.append("is:issue language:").append(language);
+        if (labelText != null && !labelText.isBlank() && !"all".equals(labelCode)) {
+            query.append(" label:\"").append(labelText).append("\"");
+        }
+        query.append(" state:open created:>").append(sinceDate);
+        if ("es".equals(humanLanguage)) {
+            query.append(" topic:español");
+        }
+
+        List<Map<String, Object>> items = fetchFromGitHub(query.toString(), page);
+
+        // If Spanish search returns nothing, fall back without the topic filter
+        if ((items == null || items.isEmpty()) && "es".equals(humanLanguage)) {
+            StringBuilder fallbackQuery = new StringBuilder();
+            fallbackQuery.append("is:issue language:").append(language);
+            if (labelText != null && !labelText.isBlank() && !"all".equals(labelCode)) {
+                fallbackQuery.append(" label:\"").append(labelText).append("\"");
+            }
+            fallbackQuery.append(" state:open created:>").append(sinceDate);
+            items = fetchFromGitHub(fallbackQuery.toString(), page);
+        }
 
         if (items == null) return Collections.emptyList();
 
-        // Filtrar issues ya mostradas a este chat (por id)
-        // (esto controla repetición entre invocaciones, además de la rotación por página)
-        List<Map<String, Object>> nuevas = new ArrayList<>(items.size());
-        // usamos chatId lógico "GLOBAL" porque aquí no lo recibimos; este método se llama
-        // desde findAndCache/refresh que van por chat. Si prefieres por chat real,
-        // mueve este filtro allí y pásale el chatId.
-        String chatKey = "GLOBAL";
-        Set<String> mostradas = issuesMostradasPorChat.computeIfAbsent(chatKey, k -> ConcurrentHashMap.newKeySet());
-
+        // Deduplicate already-shown issues globally
+        Set<String> shown = issuesMostradasPorChat.computeIfAbsent("GLOBAL", k -> ConcurrentHashMap.newKeySet());
+        List<Map<String, Object>> fresh = new ArrayList<>();
         for (Map<String, Object> issue : items) {
-            String id = String.valueOf(issue.get("id"));
-            if (mostradas.add(id)) { // add devuelve false si ya existía
-                nuevas.add(issue);
+            if (shown.add(String.valueOf(issue.get("id")))) {
+                fresh.add(issue);
             }
         }
-
-        // Si no hay nuevas (todas repetidas), devolvemos la página original
-        if (nuevas.isEmpty()) {
-            nuevas.addAll(items);
-        }
-        return nuevas;
+        return fresh.isEmpty() ? items : fresh;
     }
 
-    // --- Método legacy por si lo sigues usando en algún sitio ---
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> fetchFromGitHub(String query, int page) {
+        try {
+            return webClient.get()
+                    .uri(uri -> uri
+                            .path("/search/issues")
+                            .queryParam("q", query)
+                            .queryParam("sort", "created")
+                            .queryParam("order", "desc")
+                            .queryParam("per_page", 10)
+                            .queryParam("page", page)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .map(r -> (List<Map<String, Object>>) r.get("items"))
+                    .block();
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    // ── Legacy methods ────────────────────────────────────────────────────────
+
     public List<Map<String, Object>> getIssues(String chatId, String language, String label) {
-        List<Map<String, Object>> items = findAndCache(Long.valueOf(chatId), language, label);
-        // mantener compat con tu filtro per-chat
-        Set<String> mostradas = issuesMostradasPorChat.computeIfAbsent(chatId, k -> ConcurrentHashMap.newKeySet());
-        List<Map<String, Object>> nuevas = new ArrayList<>();
-        for (Map<String, Object> issue : items) {
-            String id = String.valueOf(issue.get("id"));
-            if (mostradas.add(id)) {
-                nuevas.add(issue);
-            }
-        }
-        return nuevas.isEmpty() ? items : nuevas;
+        return findAndCache(Long.valueOf(chatId), language, label, "en");
     }
 
-    /** Formateo simple (si no usas la UI de teclado). */
     public String formatIssues(List<Map<String, Object>> issues) {
         if (issues == null || issues.isEmpty()) return NOT_FOUND_ISSUES;
-
         StringBuilder sb = new StringBuilder(TEXT_ISSUES_FOUND);
         for (Map<String, Object> issue : issues) {
-            String title = String.valueOf(issue.get("title"));
-            String url = String.valueOf(issue.get("html_url"));
-            sb.append("🔹 ").append(title).append("\n").append(url).append("\n\n");
+            sb.append("🔹 ").append(issue.get("title"))
+              .append("\n").append(issue.get("html_url")).append("\n\n");
         }
         return sb.toString();
     }

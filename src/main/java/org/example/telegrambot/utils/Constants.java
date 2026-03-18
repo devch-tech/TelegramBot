@@ -4,18 +4,15 @@ public class Constants {
 
     public static final String HELP_MESSAGE =
             "❓ *Comandos disponibles*\n\n" +
-            "🏠 /start — Configurar tu lenguaje favorito\n\n" +
-            "🔍 /issue `<lenguaje>` `<nivel>` — Issues de GitHub\n" +
-            "  _Niveles: principiante · intermedio · avanzado_\n" +
-            "  _Sin args muestra selector interactivo_\n\n" +
+            "🏠 /start — Configura hasta *2 lenguajes favoritos*\n\n" +
+            "🔍 /issue — Issues de GitHub\n" +
+            "  _Elige idioma (🇪🇸/🇬🇧) y etiqueta (Good First Issue, Help Wanted…)_\n\n" +
             "💪 /exercises `<lenguaje>` — Ejercicios reales de Exercism\n" +
             "  _Ej: /exercises python principiante_\n\n" +
             "🧠 /questions — Quiz de 20 preguntas de programación\n\n" +
             "📅 /daily — Tu reto diario (issue + ejercicio + pregunta)\n\n" +
             "📊 /profile — Tu progreso, racha y estadísticas\n\n" +
-            "📚 /resources `<lenguaje>` — Recursos curados\n" +
-            "  _Docs · tutoriales · awesome lists_\n\n" +
-            "_Tip: usa /start para guardar tu lenguaje y los comandos lo usarán automáticamente_ 🚀";
+            "_Tip: usa /start para guardar tus lenguajes y los comandos los usarán automáticamente_ 🚀";
 
     public static final String DEFAULT_COMMANDS =
             "Comando no reconocido. Escribe /help para ver todos los comandos disponibles.";

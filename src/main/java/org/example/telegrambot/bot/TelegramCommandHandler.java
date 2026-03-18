@@ -3,6 +3,8 @@ package org.example.telegrambot.bot;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.telegrambot.commands.BotCommand;
+import org.example.telegrambot.commands.IssueCommand;
+import org.example.telegrambot.commands.StartCommand;
 import org.example.telegrambot.service.ExercismService;
 import org.example.telegrambot.service.GitHubIssueService;
 import org.example.telegrambot.service.TriviaService;
@@ -27,21 +29,15 @@ import static org.example.telegrambot.utils.Constants.DEFAULT_COMMANDS;
 @Slf4j
 public class TelegramCommandHandler {
 
-    private final ApplicationContext context;
-    private final GitHubIssueService gitHubIssueService;
-    private final TriviaService      triviaService;
-    private final UserSessionService sessionService;
-    private final ExercismService    exercismService;
-
-    private static final Map<String, String> COMPLEXITY_MAP = Map.of(
-            "principiante", "good first issue",
-            "intermedio",   "help wanted",
-            "avanzado",     "bug"
-    );
+    private final ApplicationContext  context;
+    private final GitHubIssueService  gitHubIssueService;
+    private final TriviaService       triviaService;
+    private final UserSessionService  sessionService;
+    private final ExercismService     exercismService;
 
     public void handleUpdate(Update update, TelegramClient client) {
         try {
-            // ── 1) Callbacks ────────────────────────────────────────────────
+            // ── 1) Callbacks ──────────────────────────────────────────────────
             if (update.hasCallbackQuery()) {
                 var     cq        = update.getCallbackQuery();
                 String  data      = cq.getData();
@@ -50,6 +46,7 @@ public class TelegramCommandHandler {
 
                 if (data == null) return;
 
+                // Issues pagination
                 if (data.startsWith("ISSUES_PAGE:")) {
                     int page = safeParseInt(data.substring("ISSUES_PAGE:".length()), 1);
                     List<Map<String, Object>> issues = gitHubIssueService.getLastIssues(chatId);
@@ -64,49 +61,83 @@ public class TelegramCommandHandler {
                     return;
                 }
 
-                // Level chosen from /issue selector  →  ISSUE_LEVEL:java:principiante
-                if (data.startsWith("ISSUE_LEVEL:")) {
-                    String[] parts = data.substring("ISSUE_LEVEL:".length()).split(":", 2);
+                // Step 1 → Step 2: user chose human language
+                // ISSUE_HLANG:java:es
+                if (data.startsWith("ISSUE_HLANG:")) {
+                    String[] parts = data.substring("ISSUE_HLANG:".length()).split(":", 2);
                     if (parts.length == 2) {
-                        String language = parts[0];
-                        String label    = COMPLEXITY_MAP.getOrDefault(parts[1], parts[1]);
-                        sessionService.setLanguage(chatId, language);
-                        List<Map<String, Object>> issues =
-                                gitHubIssueService.findAndCache(chatId, language, label);
-                        sessionService.addIssueExplored(chatId);
-                        IssuesUI.sendIssuesPage(client, chatId, issues, 1);
+                        String progLang  = parts[0];
+                        String humanLang = parts[1];
+                        IssueCommand.sendLabelSelector(client, chatId, progLang, humanLang);
                     }
                     return;
                 }
 
-                // Language chosen from /start  →  LANG:java
-                if (data.startsWith("LANG:")) {
+                // Step 2 → Step 3: user chose label
+                // ISSUE_LABEL:java:es:gfi
+                if (data.startsWith("ISSUE_LABEL:")) {
+                    String[] parts = data.substring("ISSUE_LABEL:".length()).split(":", 3);
+                    if (parts.length == 3) {
+                        String progLang  = parts[0];
+                        String humanLang = parts[1];
+                        String labelCode = parts[2];
+                        IssueCommand.searchAndSend(client, chatId, progLang, humanLang,
+                                labelCode, gitHubIssueService, sessionService);
+                    }
+                    return;
+                }
+
+                // First language chosen from /start → LANG:java
+                if (data.startsWith("LANG:") && !data.startsWith("LANG2:")) {
                     String language = data.substring("LANG:".length());
-                    sessionService.setLanguage(chatId, language);
-                    String langCap = Character.toUpperCase(language.charAt(0)) + language.substring(1);
-                    String confirm = "✅ ¡Listo! Tu lenguaje principal es ahora *" + langCap + "*\n\n" +
-                            "Comandos disponibles:\n" +
-                            "🔍 /issue — Issues de GitHub por dificultad\n" +
-                            "💪 /exercises — Ejercicios reales de Exercism\n" +
-                            "🧠 /questions — Quiz de 20 preguntas\n" +
-                            "📅 /daily — Reto diario\n" +
-                            "📊 /profile — Tu progreso\n" +
-                            "📚 /resources — Recursos curados\n" +
-                            "❓ /help — Ayuda completa";
+                    sessionService.setFirstLanguage(chatId, language);
+                    String langCap = capitalize(language);
+
+                    SendMessage ask = new SendMessage(String.valueOf(chatId),
+                            "✅ *" + langCap + "* guardado como lenguaje principal.\n\n" +
+                            "¿Quieres añadir un *segundo lenguaje* favorito?");
+                    ask.setParseMode("Markdown");
+                    ask.setReplyMarkup(StartCommand.buildKeyboard("LANG2", language));
+                    client.execute(ask);
+                    return;
+                }
+
+                // Second language chosen → LANG2:python
+                if (data.startsWith("LANG2:")) {
+                    String language = data.substring("LANG2:".length());
+                    sessionService.addSecondLanguage(chatId, language);
+                    List<String> langs = sessionService.getLanguages(chatId);
+                    String lang1 = capitalize(langs.get(0));
+                    String lang2 = langs.size() > 1 ? capitalize(langs.get(1)) : "";
+                    String confirm = "🎉 ¡Perfecto! Tus lenguajes favoritos son:\n" +
+                            "1️⃣ *" + lang1 + "*\n" +
+                            "2️⃣ *" + lang2 + "*\n\n" +
+                            buildCommandsMenu();
                     SendMessage msg = new SendMessage(String.valueOf(chatId), confirm);
                     msg.setParseMode("Markdown");
                     client.execute(msg);
                     return;
                 }
 
-                // Quiz answer  →  QA:0 / QA:1 / QA:2 / QA:3
+                // Skipped second language → LANG_SKIP
+                if (data.equals("LANG_SKIP")) {
+                    String language = sessionService.getLanguageOrDefault(chatId);
+                    String confirm = "✅ ¡Listo! Tu lenguaje principal es *" + capitalize(language) + "*\n\n" +
+                            buildCommandsMenu();
+                    SendMessage msg = new SendMessage(String.valueOf(chatId), confirm);
+                    msg.setParseMode("Markdown");
+                    client.execute(msg);
+                    return;
+                }
+
+                // Quiz answer → QA:0 / QA:1 / QA:2 / QA:3
                 if (data.startsWith("QA:")) {
                     int answerIdx = safeParseInt(data.substring("QA:".length()), -1);
                     if (answerIdx >= 0) handleQuizAnswer(chatId, answerIdx, client);
                     return;
                 }
 
-                // Exercises pagination  →  EX_PAGE:java:2
+                // Exercises pagination → EX_PAGE:java:2
                 if (data.startsWith("EX_PAGE:")) {
                     String[] parts = data.substring("EX_PAGE:".length()).split(":", 2);
                     if (parts.length == 2) {
@@ -119,7 +150,7 @@ public class TelegramCommandHandler {
                     return;
                 }
 
-                // Exercises refresh  →  EX_REFRESH:java
+                // Exercises refresh → EX_REFRESH:java
                 if (data.startsWith("EX_REFRESH:")) {
                     String language = data.substring("EX_REFRESH:".length());
                     List<Map<String, Object>> exercises =
@@ -128,10 +159,10 @@ public class TelegramCommandHandler {
                     return;
                 }
 
-                return; // unknown callback
+                return;
             }
 
-            // ── 2) Text messages ─────────────────────────────────────────────
+            // ── 2) Text messages ──────────────────────────────────────────────
             if (!update.hasMessage() || !update.getMessage().hasText()) return;
 
             String chatIdStr   = update.getMessage().getChatId().toString();
@@ -139,8 +170,6 @@ public class TelegramCommandHandler {
             String commandName = text.split("\\s+")[0].toLowerCase();
 
             if (commandName.startsWith("/")) commandName = commandName.substring(1);
-
-            // Strip @BotUsername suffix (e.g. /help@MyBot)
             int atIdx = commandName.indexOf('@');
             if (atIdx > 0) commandName = commandName.substring(0, atIdx);
 
@@ -196,6 +225,23 @@ public class TelegramCommandHandler {
         } else {
             QuizUI.sendQuestion(client, chatId, next, triviaService);
         }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    private static String buildCommandsMenu() {
+        return "Comandos disponibles:\n" +
+               "🔍 /issue — Issues de GitHub\n" +
+               "💪 /exercises — Ejercicios de Exercism\n" +
+               "🧠 /questions — Quiz de 20 preguntas\n" +
+               "📅 /daily — Reto diario\n" +
+               "📊 /profile — Tu progreso\n" +
+               "❓ /help — Ayuda completa";
     }
 
     private int safeParseInt(String s, int fallback) {
