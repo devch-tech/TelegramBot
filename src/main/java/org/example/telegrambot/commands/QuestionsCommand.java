@@ -1,6 +1,7 @@
 package org.example.telegrambot.commands;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.telegrambot.service.TriviaService;
 import org.example.telegrambot.service.UserSessionService;
 import org.example.telegrambot.ui.QuizUI;
@@ -10,6 +11,7 @@ import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 @Component("questions")
 @RequiredArgsConstructor
+@Slf4j
 public class QuestionsCommand implements BotCommand {
 
     private final TriviaService      triviaService;
@@ -30,7 +32,7 @@ public class QuestionsCommand implements BotCommand {
         try {
             QuizUI.sendQuestion(client, chatId, state, triviaService);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error starting quiz", e);
             return "⚠️ Error iniciando el quiz";
         }
         return "";

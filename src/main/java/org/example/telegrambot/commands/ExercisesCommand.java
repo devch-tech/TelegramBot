@@ -1,6 +1,7 @@
 package org.example.telegrambot.commands;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.telegrambot.service.ExercismService;
 import org.example.telegrambot.service.UserSessionService;
 import org.example.telegrambot.ui.ExerciseUI;
@@ -13,6 +14,7 @@ import java.util.Map;
 
 @Component("exercises")
 @RequiredArgsConstructor
+@Slf4j
 public class ExercisesCommand implements BotCommand {
 
     private final ExercismService    exercismService;
@@ -52,7 +54,7 @@ public class ExercisesCommand implements BotCommand {
         try {
             ExerciseUI.sendExercisesPage(client, chatId, exercises, 1, language);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error sending exercises page", e);
             return "⚠️ Error mostrando los ejercicios";
         }
         return "";

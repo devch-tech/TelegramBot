@@ -1,6 +1,7 @@
 package org.example.telegrambot.commands;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.telegrambot.service.ExercismService;
 import org.example.telegrambot.service.GitHubIssueService;
 import org.example.telegrambot.service.TriviaService;
@@ -18,6 +19,7 @@ import java.util.Map;
 
 @Component("daily")
 @RequiredArgsConstructor
+@Slf4j
 public class DailyCommand implements BotCommand {
 
     private final UserSessionService sessionService;
@@ -85,7 +87,7 @@ public class DailyCommand implements BotCommand {
                     "_Vuelve mañana para seguir tu racha. ¡Tú puedes!_");
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error generating daily challenge", e);
             return "⚠️ Error generando el reto diario";
         }
 

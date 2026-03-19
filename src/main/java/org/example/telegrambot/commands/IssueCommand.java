@@ -1,6 +1,7 @@
 package org.example.telegrambot.commands;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.telegrambot.service.GitHubIssueService;
 import org.example.telegrambot.service.UserSessionService;
 import org.example.telegrambot.ui.IssuesUI;
@@ -18,6 +19,7 @@ import java.util.Map;
 
 @Component("issue")
 @RequiredArgsConstructor
+@Slf4j
 public class IssueCommand implements BotCommand {
 
     private final GitHubIssueService gitHubIssueService;
@@ -61,7 +63,7 @@ public class IssueCommand implements BotCommand {
         msg.setParseMode("Markdown");
         msg.setReplyMarkup(kb);
 
-        try { client.execute(msg); } catch (Exception e) { e.printStackTrace(); }
+        try { client.execute(msg); } catch (Exception e) { log.error("Error sending label selector", e); }
     }
 
     // ── Step 2: search & display ──────────────────────────────────────────────
@@ -76,7 +78,7 @@ public class IssueCommand implements BotCommand {
         try {
             IssuesUI.sendIssuesPage(client, chatId, issues, 1);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error sending issues page", e);
         }
     }
 

@@ -32,3 +32,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Bot database (H2 file — never commit user data) ###
+devbot-data/

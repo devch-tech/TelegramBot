@@ -1,6 +1,7 @@
 package org.example.telegrambot.commands;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.telegrambot.service.UserSessionService;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -15,6 +16,7 @@ import java.util.List;
 
 @Component("start")
 @RequiredArgsConstructor
+@Slf4j
 public class StartCommand implements BotCommand {
 
     private final UserSessionService sessionService;
@@ -60,7 +62,7 @@ public class StartCommand implements BotCommand {
         try {
             client.execute(msg);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Error sending start message", e);
         }
         return "";
     }

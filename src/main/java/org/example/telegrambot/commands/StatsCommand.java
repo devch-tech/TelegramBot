@@ -44,11 +44,16 @@ public class StatsCommand implements BotCommand {
                 .map(e -> capitalize(e.getKey()) + " (" + e.getValue() + " usuarios)")
                 .orElse("N/A");
 
-        // Top streak
+        // Top streak (show only first initial to protect privacy)
         String topStreak = all.stream()
-                .filter(u -> u.getFirstName() != null)
                 .max(Comparator.comparingInt(UserStats::getStreak))
-                .map(u -> u.getFirstName() + " — " + u.getStreak() + " días 🔥")
+                .map(u -> {
+                    String name = u.getFirstName();
+                    String display = (name != null && !name.isEmpty())
+                            ? name.charAt(0) + "***"
+                            : "Alguien";
+                    return display + " — " + u.getStreak() + " días 🔥";
+                })
                 .orElse("N/A");
 
         return "📊 *Estadísticas de DevBot*\n" +
